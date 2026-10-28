@@ -1,3 +1,11 @@
+const SUPABASE_URL = "https://auukdlsduwjbisffdocj.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FaYFLpAdil0-mlMaV4TCCw_tZFw3k5I";
+
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+);
+
 const cover = document.getElementById('cover');
 const openButton = document.getElementById('openInvitation');
 const mainContent = document.getElementById('mainContent');
@@ -97,48 +105,182 @@ if (copyAccountButton) {
   });
 }
 
-// Demo guestbook: saves locally on the current browser/device.
-// Shared guestbook across guests requires an online database integration.
+// ==========================================
+// BUKU UCAPAN WEDDING ASRI & ANGGA
+// Penyimpanan online menggunakan Supabase
+// ==========================================
+
 const wishForm = document.getElementById('wishForm');
 const wishesList = document.getElementById('wishesList');
-const wishStorageKey = 'asri-angga-wedding-wishes-v1';
-function getSavedWishes() {
-  try { return JSON.parse(localStorage.getItem(wishStorageKey) || '[]'); } catch (e) { return []; }
+const wishFeedback = document.getElementById('wishFeedback');
+
+// Mengambil ucapan dari database Supabase
+async function getSavedWishes() {
+    const { data, error } = await supabaseClient
+        .from('ucapan')
+        .select('id, nama, pesan, kehadiran, created_at')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+    if (error) {
+        console.error('Gagal mengambil ucapan:', error);
+        throw error;
+    }
+
+    return data.map((wish) => ({
+        id: wish.id,
+        name: wish.nama,
+        attendance: wish.kehadiran,
+        message: wish.pesan,
+        date: new Date(wish.created_at).toLocaleString('id-ID', {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        })
+    }));
 }
-function renderWishes() {
-  if (!wishesList) return;
-  const wishes = getSavedWishes(); wishesList.innerHTML = '';
-  if (!wishes.length) {
-    const empty = document.createElement('p'); empty.className = 'empty-wishes';
-    empty.textContent = 'Belum ada ucapan. Jadilah yang pertama mengirim doa!';
-    wishesList.appendChild(empty); return;
-  }
-  wishes.slice().reverse().forEach((wish) => {
-    const card = document.createElement('article'); card.className = 'wish-entry';
-    const head = document.createElement('div'); head.className = 'wish-entry-head';
-    const name = document.createElement('strong'); name.textContent = wish.name;
-    const attendance = document.createElement('span'); attendance.className = 'attendance'; attendance.textContent = wish.attendance;
-    head.append(name, attendance);
-    const message = document.createElement('p'); message.textContent = wish.message;
-    const time = document.createElement('time'); time.textContent = wish.date;
-    card.append(head, message, time); wishesList.appendChild(card);
-  });
-}
-if (wishForm) {
-  wishForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const name = document.getElementById('wishName').value.trim();
-    const attendance = document.getElementById('wishAttendance').value;
-    const message = document.getElementById('wishMessage').value.trim();
-    const feedback = document.getElementById('wishFeedback');
-    if (!name || !message) { feedback.textContent = 'Mohon isi nama dan ucapan terlebih dahulu.'; return; }
-    const wishes = getSavedWishes();
-    wishes.push({name, attendance, message, date: new Date().toLocaleString('id-ID', {dateStyle:'medium', timeStyle:'short'})});
+
+
+// Menampilkan ucapan di halaman undangan
+async function renderWishes() {
+    if (!wishesList) return;
+
+    wishesList.replaceChildren();
+
+    const loading = document.createElement('p');
+    loading.className = 'empty-wishes';
+    loading.textContent = 'Memuat ucapan...';
+
+    wishesList.appendChild(loading);
+
     try {
-      localStorage.setItem(wishStorageKey, JSON.stringify(wishes.slice(-100)));
-      feedback.textContent = 'Terima kasih! Ucapan tersimpan di browser ini.';
-      wishForm.reset(); renderWishes();
-    } catch (e) { feedback.textContent = 'Ucapan belum bisa disimpan di browser ini.'; }
-  });
-  renderWishes();
+        const wishes = await getSavedWishes();
+
+        wishesList.replaceChildren();
+
+        if (wishes.length === 0) {
+            const empty = document.createElement('p');
+
+            empty.className = 'empty-wishes';
+            empty.textContent =
+                'Belum ada ucapan. Jadilah yang pertama mengirim doa!';
+
+            wishesList.appendChild(empty);
+            return;
+        }
+
+        wishes.forEach((wish) => {
+            const card = document.createElement('article');
+            card.className = 'wish-entry';
+
+            const head = document.createElement('div');
+            head.className = 'wish-entry-head';
+
+            const name = document.createElement('strong');
+            name.textContent = wish.name;
+
+            const attendance = document.createElement('span');
+            attendance.className = 'attendance';
+            attendance.textContent = wish.attendance || '';
+
+            head.append(name, attendance);
+
+            const message = document.createElement('p');
+            message.textContent = wish.message;
+
+            const time = document.createElement('time');
+            time.textContent = wish.date;
+
+            card.append(head, message, time);
+            wishesList.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Gagal menampilkan ucapan:', error);
+
+        wishesList.replaceChildren();
+
+        const errorMessage = document.createElement('p');
+        errorMessage.className = 'empty-wishes';
+        errorMessage.textContent =
+            'Ucapan belum dapat dimuat. Periksa koneksi internet dan coba lagi.';
+
+        wishesList.appendChild(errorMessage);
+    }
 }
+
+
+// Mengirim ucapan ke database Supabase
+if (wishForm) {
+    wishForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const name = document
+            .getElementById('wishName')
+            .value.trim();
+
+        const attendance = document
+            .getElementById('wishAttendance')
+            .value;
+
+        const message = document
+            .getElementById('wishMessage')
+            .value.trim();
+
+        if (!name || !message) {
+            wishFeedback.textContent =
+                'Mohon isi nama dan ucapan terlebih dahulu.';
+            return;
+        }
+
+        if (name.length > 100 || message.length > 1000) {
+            wishFeedback.textContent =
+                'Nama maksimal 100 karakter dan ucapan maksimal 1000 karakter.';
+            return;
+        }
+
+        const submitButton = wishForm.querySelector(
+            'button[type="submit"], input[type="submit"]'
+        );
+
+        if (submitButton) {
+            submitButton.disabled = true;
+        }
+
+        wishFeedback.textContent = 'Mengirim ucapan...';
+
+        try {
+            const { error } = await supabaseClient
+                .from('ucapan')
+                .insert({
+                    nama: name,
+                    pesan: message,
+                    kehadiran: attendance
+                });
+
+            if (error) {
+                throw error;
+            }
+
+            wishFeedback.textContent =
+                'Terima kasih! Ucapan berhasil dikirim.';
+
+            wishForm.reset();
+
+            await renderWishes();
+
+        } catch (error) {
+            console.error('Gagal menyimpan ucapan:', error);
+
+            wishFeedback.textContent =
+                'Ucapan gagal dikirim. Silakan coba lagi.';
+        } finally {
+            if (submitButton) {
+                submitButton.disabled = false;
+            }
+        }
+    });
+}
+
+
+// Memuat ucapan ketika halaman dibuka
+renderWishes();
